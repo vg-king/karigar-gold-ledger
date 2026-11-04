@@ -30,16 +30,16 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-5 py-10">
-      <form onSubmit={submit} className="w-full max-w-sm rounded-2xl bg-white p-7 shadow-sm ring-1 ring-slate-200">
-        <p className="mb-2 text-sm font-semibold uppercase tracking-[0.2em] text-sky-700">Karigar Gold Ledger</p>
-        <h1 className="mb-7 text-2xl font-semibold text-slate-900">Sign in</h1>
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="email">Email</label>
-        <input id="email" name="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-sky-600" />
-        <label className="mb-1 block text-sm font-medium text-slate-700" htmlFor="password">Password</label>
-        <input id="password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} className="mb-5 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-sky-600" />
-        {error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        <button type="submit" disabled={loading} className="w-full rounded-lg bg-sky-700 px-4 py-2.5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
+    <main className="auth-page">
+      <form onSubmit={submit} className="auth-card surface">
+        <p className="eyebrow">Karigar Gold Ledger</p>
+        <h1>Sign in</h1>
+        <label htmlFor="email">Email</label>
+        <input id="email" name="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="input" />
+        <label htmlFor="password">Password</label>
+        <input id="password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} className="input" />
+        {error && <p role="alert" className="inline-error">{error}</p>}
+        <button type="submit" disabled={loading} className="button button-primary auth-submit">
           {loading ? "Signing in..." : "Sign in"}
         </button>
       </form>

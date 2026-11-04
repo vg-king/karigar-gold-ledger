@@ -159,11 +159,11 @@ async function main() {
       }
     }
 
-    const jobs: Array<{ id: string; karigarId: string }> = [];
+    const jobs: Array<{ id: string; karigarId: string; status: "OPEN" | "CLOSED"; jobNo: string }> = [];
     for (const [karigarIndex, karigar] of karigarRows.entries()) {
       for (let jobIndex = 0; jobIndex < 4; jobIndex += 1) {
         const categoryIndex = karigarIndex === 0 && jobIndex === 0 ? 1 : (karigarIndex + jobIndex) % categoryRows.length;
-        jobs.push(await prisma.job.create({
+        const job = await prisma.job.create({
           data: {
             jobNo: karigarIndex === 0 && jobIndex === 0
               ? "J-1042"
@@ -172,7 +172,8 @@ async function main() {
             categoryId: categoryRows[categoryIndex].id,
             status: karigarIndex === 0 && jobIndex === 0 ? "OPEN" : "CLOSED",
           },
-        }));
+        });
+        jobs.push({ id: job.id, karigarId: job.karigarId, status: job.status, jobNo: job.jobNo });
       }
     }
 
@@ -243,6 +244,50 @@ async function main() {
       }
     }
 
+    for (let karigarIndex = 0; karigarIndex < 5; karigarIndex += 1) {
+      const karigar = karigarRows[karigarIndex];
+      const category = categoryRows[(karigarIndex + 2) % categoryRows.length];
+      const job = await prisma.job.create({
+        data: {
+          jobNo: `J-${3000 + karigarIndex}`,
+          karigarId: karigar.id,
+          categoryId: category.id,
+          status: "OPEN",
+        },
+      });
+      jobs.push({ id: job.id, karigarId: job.karigarId, status: job.status, jobNo: job.jobNo });
+      const issueGrossMg = parseWeightToMg(`${88 + karigarIndex * 3}.000`);
+      const issueFineMg = toFine(issueGrossMg);
+      const issueDate = karigarIndex < 3 ? new Date() : daysAgo(1, 10 + karigarIndex);
+      entries.push({
+        type: "ISSUE",
+        jobId: job.id,
+        karigarId: karigar.id,
+        grossMg: issueGrossMg,
+        purityBp: Number(purityBp),
+        fineMg: issueFineMg,
+        netMg: null,
+        huid: `HUID-OPEN-${karigarIndex + 1}`,
+        idempotencyKey: `seed-open-issue-${karigarIndex}`,
+        createdById: clerk.id,
+        createdAt: issueDate,
+      });
+      const partialGrossMg = (issueGrossMg * 45n) / 100n;
+      entries.push({
+        type: "RECEIPT_PIECE",
+        jobId: job.id,
+        karigarId: karigar.id,
+        grossMg: partialGrossMg,
+        purityBp: Number(purityBp),
+        fineMg: toFine(partialGrossMg),
+        netMg: partialGrossMg,
+        huid: `HUID-OPEN-PIECE-${karigarIndex + 1}`,
+        idempotencyKey: `seed-open-receipt-${karigarIndex}`,
+        createdById: clerk.id,
+        createdAt: new Date(issueDate.getTime() + 60 * 60 * 1000),
+      });
+    }
+
     assertBalances(entries, karigarRows.map((karigar) => karigar.id));
     await prisma.ledgerEntry.createMany({ data: entries });
 
@@ -256,19 +301,18 @@ async function main() {
     });
 
     console.log(`Seeded ${karigarRows.length} karigars, ${categoryRows.length} categories, ${jobs.length} jobs, and ${entries.length} ledger entries.`);
-    for (const [karigarIndex, karigar] of karigarRows.entries()) {
+    for (const karigar of karigarRows) {
       const karigarEntries = entries.filter((entry) => entry.karigarId === karigar.id);
       const balance = karigarEntries.reduce(
         (sum, entry) => sum + (entry.type === "ISSUE" ? entry.fineMg : -entry.fineMg),
         0n,
       );
       const closedLossesForKarigar = [];
-      for (let jobIndex = 0; jobIndex < 4; jobIndex += 1) {
-        if (karigarIndex === 0 && jobIndex === 0) continue;
-        const jobEntries = karigarEntries.filter((entry) => entry.jobId === jobs[karigarIndex * 4 + jobIndex].id);
+      for (const job of jobs.filter((item) => item.karigarId === karigar.id && item.status === "CLOSED")) {
+        const jobEntries = karigarEntries.filter((entry) => entry.jobId === job.id);
         closedLossesForKarigar.push(lossPercent(jobEntries));
       }
-      console.log(`${karigar.name}: 4 jobs, ${formatMg(balance)} g final balance, closed loss ${closedLossesForKarigar.join(", ")}`);
+      console.log(`${karigar.name}: ${jobs.filter((item) => item.karigarId === karigar.id).length} jobs, ${formatMg(balance)} g final balance, closed loss ${closedLossesForKarigar.join(", ")}`);
     }
   } finally {
     await prisma.$disconnect();

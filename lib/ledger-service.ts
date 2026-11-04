@@ -258,6 +258,6 @@ export async function getKarigarLedger(db: Db, id: string, page: number, pageSiz
 }
 
 export async function getBalances(db: Db) {
-  const karigars = await db.karigar.findMany({ orderBy: { name: "asc" }, include: { ledgerEntries: true } });
-  return karigars.map((karigar) => ({ id: karigar.id, name: karigar.name, code: karigar.code, balance: serializeWeight(entryBalance(karigar.ledgerEntries)) }));
+  const karigars = await db.karigar.findMany({ orderBy: { name: "asc" }, include: { ledgerEntries: true, jobs: { select: { status: true } } } });
+  return karigars.map((karigar) => ({ id: karigar.id, name: karigar.name, code: karigar.code, balance: serializeWeight(entryBalance(karigar.ledgerEntries)), openJobs: karigar.jobs.filter((job) => job.status === "OPEN").length }));
 }
