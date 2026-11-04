@@ -10,7 +10,7 @@ export type RequireRoleOptions = {
 export type ApiAccessError = Response;
 
 export function roleIsAllowed(session: Session | null, roles: readonly Role[]): boolean {
-  return Boolean(session?.user?.role && roles.includes(session.user.role));
+  return Boolean(session?.user?.id && session.user.role && roles.includes(session.user.role));
 }
 
 export async function requireRole(
@@ -20,16 +20,16 @@ export async function requireRole(
   const session = "session" in options
     ? options.session ?? null
     : await (await import("../auth")).auth();
-  if (!session?.user) {
+  if (!session?.user?.id) {
     if (options.mode === "api") {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
+      return Response.json({ error: { code: "UNAUTHORIZED", message: "Authentication required." } }, { status: 401 });
     }
     redirect("/login");
   }
 
   if (!roleIsAllowed(session, roles)) {
     if (options.mode === "api") {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
+      return Response.json({ error: { code: "FORBIDDEN", message: "You do not have permission to perform this action." } }, { status: 403 });
     }
     forbidden();
   }

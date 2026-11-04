@@ -8,12 +8,15 @@ import {
   recordLoginFailure,
 } from "./lib/auth-rate-limit";
 import { prisma } from "./lib/prisma";
+import { authCallbacks } from "./lib/auth-callbacks";
 
 const GENERIC_LOGIN_ERROR = "Invalid email or password.";
 
 class RateLimitError extends CredentialsSignin {
   code = LOGIN_RATE_LIMIT_ERROR_CODE;
 }
+
+export { authCallbacks };
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
@@ -51,21 +54,5 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  callbacks: {
-    authorized({ auth: session }) {
-      return Boolean(session?.user);
-    },
-    jwt({ token, user }) {
-      if (user?.role) {
-        token.role = user.role;
-      }
-      return token;
-    },
-    session({ session, token }) {
-      if (session.user && token.role) {
-        session.user.role = token.role;
-      }
-      return session;
-    },
-  },
+  callbacks: authCallbacks,
 });

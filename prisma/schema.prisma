@@ -52,6 +52,7 @@ model Karigar {
   nameTa         String?
   code           String               @unique
   phone          String
+  active         Boolean              @default(true)
   categoryRates  KarigarCategoryRate[]
   jobs           Job[]
   ledgerEntries  LedgerEntry[]
