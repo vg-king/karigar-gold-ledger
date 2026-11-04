@@ -1,0 +1,144 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../generated/prisma"
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ISSUE_CLERK
+  FINANCE_HEAD
+}
+
+enum JobStatus {
+  OPEN
+  CLOSED
+}
+
+enum LedgerEntryType {
+  ISSUE
+  RECEIPT_PIECE
+  RECEIPT_SCRAP
+  RECEIPT_FILINGS
+}
+
+enum AlertKind {
+  LOSS_REVIEW
+}
+
+enum AlertStatus {
+  OPEN
+  RESOLVED
+}
+
+model User {
+  id             String        @id @default(uuid())
+  email          String        @unique
+  name           String
+  role           UserRole
+  passwordHash   String
+  ledgerEntries  LedgerEntry[] @relation("LedgerEntryCreatedBy")
+  auditLogs      AuditLog[]    @relation("AuditLogActor")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model Karigar {
+  id             String               @id @default(uuid())
+  name           String
+  nameTa         String?
+  code           String               @unique
+  phone          String
+  categoryRates  KarigarCategoryRate[]
+  jobs           Job[]
+  ledgerEntries  LedgerEntry[]
+  alerts         Alert[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+}
+
+model ItemCategory {
+  id             String               @id @default(uuid())
+  name           String               @unique
+  wastageBp      Int
+  categoryRates  KarigarCategoryRate[]
+  jobs           Job[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+}
+
+model KarigarCategoryRate {
+  id          String       @id @default(uuid())
+  karigarId   String
+  categoryId  String
+  wastageBp   Int
+  karigar     Karigar      @relation(fields: [karigarId], references: [id], onDelete: Cascade)
+  category    ItemCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([karigarId, categoryId])
+}
+
+model Job {
+  id            String        @id @default(uuid())
+  jobNo         String        @unique
+  karigarId     String
+  categoryId    String
+  status        JobStatus     @default(OPEN)
+  karigar       Karigar       @relation(fields: [karigarId], references: [id])
+  category      ItemCategory  @relation(fields: [categoryId], references: [id])
+  ledgerEntries LedgerEntry[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model LedgerEntry {
+  id             String           @id @default(uuid())
+  type           LedgerEntryType
+  jobId          String
+  karigarId      String
+  grossMg        BigInt           @db.BigInt
+  purityBp       Int
+  fineMg         BigInt           @db.BigInt
+  netMg          BigInt?          @db.BigInt
+  huid           String?
+  idempotencyKey String           @unique
+  createdById    String
+  createdAt      DateTime         @default(now())
+  job            Job              @relation(fields: [jobId], references: [id])
+  karigar        Karigar          @relation(fields: [karigarId], references: [id])
+  createdBy      User             @relation("LedgerEntryCreatedBy", fields: [createdById], references: [id])
+
+  @@index([karigarId, createdAt])
+  @@index([jobId, createdAt])
+}
+
+model Alert {
+  id        String      @id @default(uuid())
+  karigarId String
+  kind      AlertKind
+  status    AlertStatus @default(OPEN)
+  detail    String
+  createdAt DateTime    @default(now())
+  karigar   Karigar     @relation(fields: [karigarId], references: [id], onDelete: Cascade)
+
+  @@index([karigarId, status])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  entity     String
+  entityId   String?
+  detail     String
+  actorId    String?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
