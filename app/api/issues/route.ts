@@ -10,9 +10,8 @@ export async function POST(request: Request) {
   try {
     const input = await readJson(request, issueSchema);
     const result = await createIssue(prisma, access.user, input);
-    return Response.json(result.entry, { status: result.status });
+    return Response.json(result, { status: result.status });
   } catch (error) {
     return errorResponse(error);
   }
 }
-

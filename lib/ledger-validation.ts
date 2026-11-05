@@ -43,6 +43,15 @@ export const receiptSchema = z.object({
   if (value.type === "RECEIPT_PIECE" && !value.huid) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["huid"], message: "HUID is required for piece receipts." });
   }
+  if (value.netWeight) {
+    try {
+      if (parseWeightToMg(value.netWeight) > parseWeightToMg(value.grossWeight)) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["netWeight"], message: "Net weight cannot exceed gross weight." });
+      }
+    } catch {
+      // The field-level weight validator reports malformed values.
+    }
+  }
 });
 
 export const pageSchema = z.object({

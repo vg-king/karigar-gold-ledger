@@ -8,5 +8,5 @@ export default async function FinancePage() {
     return null;
   }
 
-  return <AppShell session={session}><div className="page-shell"><PageHeader eyebrow="Finance" title="Finance workspace" description="Loss alerts and daily stock statements will appear here in the next step." /><Card><p className="muted">This read-only foundation is ready for the finance workflows.</p></Card></div></AppShell>;
+  return <AppShell session={session}><div className="page-shell"><PageHeader eyebrow="Finance" title="Finance workspace" description="Review gold movement and operational information in one place." /><Card><p className="muted">Finance tools are available here for authorized review.</p></Card></div></AppShell>;
 }

@@ -149,4 +149,13 @@ describe("receipt validation", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("rejects net weight greater than gross weight", () => {
+    const result = receiptSchema.safeParse({
+      jobId: "123e4567-e89b-12d3-a456-426614174000", type: "RECEIPT_PIECE", grossWeight: "1.000", netWeight: "1.001",
+      purity: "91.60", huid: "HUID123", idempotencyKey: "net-over-gross",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues[0]?.path).toEqual(["netWeight"]);
+  });
 });

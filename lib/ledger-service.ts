@@ -157,6 +157,9 @@ export async function createReceipt(db: Db, actor: Actor, input: {
   const purityBp = parsePurityToBp(input.purity);
   const fine = fineMg(grossMg, purityBp);
   const netMg = input.netWeight ? parseWeightToMg(input.netWeight) : null;
+  if (netMg !== null && netMg > grossMg) {
+    throw new ApiError("INVALID_INPUT", "Net weight cannot exceed gross weight.", 422, "netWeight");
+  }
   try {
     return await db.$transaction(async (tx) => {
     const duplicate = await tx.ledgerEntry.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
@@ -260,4 +263,30 @@ export async function getKarigarLedger(db: Db, id: string, page: number, pageSiz
 export async function getBalances(db: Db) {
   const karigars = await db.karigar.findMany({ orderBy: { name: "asc" }, include: { ledgerEntries: true, jobs: { select: { status: true } } } });
   return karigars.map((karigar) => ({ id: karigar.id, name: karigar.name, code: karigar.code, balance: serializeWeight(entryBalance(karigar.ledgerEntries)), openJobs: karigar.jobs.filter((job) => job.status === "OPEN").length }));
+}
+
+export async function getOpenJobs(db: Db) {
+  const jobs = await db.job.findMany({
+    where: { status: "OPEN" },
+    orderBy: { createdAt: "desc" },
+    include: { karigar: { include: { categoryRates: true } }, category: true, ledgerEntries: true },
+  });
+  return jobs.map((job) => {
+    const issued = job.ledgerEntries.filter((entry) => entry.type === "ISSUE").reduce((sum, entry) => sum + entry.fineMg, 0n);
+    const received = job.ledgerEntries.filter((entry) => entry.type !== "ISSUE").reduce((sum, entry) => sum + entry.fineMg, 0n);
+    const agreedRate = job.karigar.categoryRates.find((rate) => rate.categoryId === job.categoryId)?.wastageBp ?? job.category.wastageBp;
+    const allowed = allowedWastageMg(issued, BigInt(agreedRate));
+    return {
+      id: job.id,
+      jobNo: job.jobNo,
+      karigar: { id: job.karigar.id, name: job.karigar.name, code: job.karigar.code },
+      category: { id: job.category.id, name: job.category.name },
+      outstanding: serializeWeight(issued - received),
+      issuedFine: serializeWeight(issued),
+      receivedFine: serializeWeight(received),
+      actualLoss: serializeWeight(issued - received),
+      allowedWastage: serializeWeight(allowed),
+      lossBeyondAllowance: serializeWeight(lossBeyondAllowanceMg(issued - received, allowed)),
+    };
+  });
 }
