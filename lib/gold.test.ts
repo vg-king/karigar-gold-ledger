@@ -4,6 +4,7 @@ import {
   fineMg,
   formatMg,
   lossBeyondAllowanceMg,
+  lossBp,
   parsePurityToBp,
   parseWeightToMg,
   runningBalanceMg,
@@ -54,6 +55,11 @@ describe("gold maths", () => {
     expect(lossBeyondAllowanceMg(3893n, 3298n)).toBe(595n);
     expect(lossBeyondAllowanceMg(3298n, 3893n)).toBe(0n);
     expect(lossBeyondAllowanceMg(-1n, 0n)).toBe(0n);
+  });
+
+  it("rounds loss basis points half-up with bigint maths", () => {
+    expect(lossBp(1000n, 995n)).toBe(50n);
+    expect(lossBp(3n, 2n)).toBe(3333n);
   });
 
   it("rejects invalid values", () => {

@@ -1,5 +1,5 @@
 import { requireRole } from "../../../lib/require-role";
-import { errorResponse, readJson } from "../../../lib/api";
+import { errorResponse, readJson, serializeBigInts } from "../../../lib/api";
 import { receiptSchema } from "../../../lib/ledger-validation";
 import { createReceipt } from "../../../lib/ledger-service";
 import { prisma } from "../../../lib/prisma";
@@ -10,9 +10,8 @@ export async function POST(request: Request) {
   try {
     const input = await readJson(request, receiptSchema);
     const result = await createReceipt(prisma, access.user, input);
-    return Response.json(result.entry, { status: result.status });
+    return Response.json(serializeBigInts(result.entry), { status: result.status });
   } catch (error) {
     return errorResponse(error);
   }
 }
-

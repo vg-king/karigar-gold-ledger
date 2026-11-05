@@ -46,12 +46,17 @@ function database(overrides: Record<string, unknown> = {}) {
         category: { wastageBp: 300 },
         ledgerEntries: [entry("ISSUE", 109920n, 120000n), entry("RECEIPT_PIECE", 103004n, 112450n), entry("RECEIPT_SCRAP", 3023n, 3300n)],
       }),
+      findMany: vi.fn().mockResolvedValue([]),
       update: vi.fn().mockResolvedValue({}),
     },
     karigarCategoryRate: {
       findUnique: vi.fn().mockResolvedValue({ wastageBp: 300 }),
     },
     auditLog: { create: vi.fn().mockResolvedValue({}) },
+    alert: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({ createdAt: new Date() }),
+    },
     ...overrides,
   };
   return {

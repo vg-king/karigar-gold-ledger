@@ -10,7 +10,7 @@ export function NavLinks({ isFinance }: { isFinance: boolean }) {
     ["/balances", "Balances"],
     ["/issue", "Issue"],
     ["/receipt", "Receipt"],
-    ...(isFinance ? [["/karigars", "Karigars"], ["/finance", "Finance"]] : []),
+    ...(isFinance ? [["/karigars", "Karigars"], ["/finance", "Finance"], ["/stock", "Stock"]] : []),
   ];
   return <>{links.map(([href, label]) => <Link key={href} href={href} aria-current={pathname === href || pathname.startsWith(`${href}/`) ? "page" : undefined}><span className="nav-label-full">{label}</span><span className="nav-label-short">{label === "Balances" ? "Bal." : label === "Karigars" ? "Masters" : label}</span></Link>)}</>;
 }

@@ -1,5 +1,5 @@
 import { requireRole } from "../../../lib/require-role";
-import { errorResponse, readJson } from "../../../lib/api";
+import { errorResponse, readJson, serializeBigInts } from "../../../lib/api";
 import { karigarCreateSchema } from "../../../lib/ledger-validation";
 import { createKarigar } from "../../../lib/ledger-service";
 import { prisma } from "../../../lib/prisma";
@@ -10,7 +10,7 @@ export async function GET() {
   if (access instanceof Response) return access;
   try {
     const karigars = await prisma.karigar.findMany({ orderBy: { name: "asc" }, include: { categoryRates: true } });
-    return Response.json(karigars);
+    return Response.json(serializeBigInts(karigars));
   } catch (error) {
     return errorResponse(error);
   }
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   if (access instanceof Response) return access;
   try {
     const input = await readJson(request, karigarCreateSchema);
-    return Response.json(await createKarigar(prisma, access.user, input), { status: 201 });
+    return Response.json(serializeBigInts(await createKarigar(prisma, access.user, input)), { status: 201 });
   } catch (error) {
     return errorResponse(error);
   }

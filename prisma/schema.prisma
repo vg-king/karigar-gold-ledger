@@ -25,13 +25,19 @@ enum LedgerEntryType {
   RECEIPT_FILINGS
 }
 
+enum StockMovementType {
+  OPENING
+  REFINER_SEND
+  REFINER_RETURN
+}
+
 enum AlertKind {
   LOSS_REVIEW
 }
 
 enum AlertStatus {
   OPEN
-  RESOLVED
+  REVIEWED
 }
 
 model User {
@@ -42,6 +48,8 @@ model User {
   passwordHash   String
   ledgerEntries  LedgerEntry[] @relation("LedgerEntryCreatedBy")
   auditLogs      AuditLog[]    @relation("AuditLogActor")
+  reviewedAlerts Alert[]       @relation("AlertReviewer")
+  stockMovements StockMovement[] @relation("StockMovementCreator")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 }
@@ -90,11 +98,27 @@ model Job {
   karigarId     String
   categoryId    String
   status        JobStatus     @default(OPEN)
+  closedAt      DateTime?
   karigar       Karigar       @relation(fields: [karigarId], references: [id])
   category      ItemCategory  @relation(fields: [categoryId], references: [id])
   ledgerEntries LedgerEntry[]
+  alerts        Alert[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+}
+
+model StockMovement {
+  id             String             @id @default(uuid())
+  type           StockMovementType
+  movementDate   DateTime
+  fineMg         BigInt             @db.BigInt
+  note           String
+  idempotencyKey String             @unique
+  createdById    String
+  createdAt      DateTime           @default(now())
+  createdBy      User               @relation("StockMovementCreator", fields: [createdById], references: [id])
+
+  @@index([type, movementDate])
 }
 
 model LedgerEntry {
@@ -119,15 +143,23 @@ model LedgerEntry {
 }
 
 model Alert {
-  id        String      @id @default(uuid())
-  karigarId String
-  kind      AlertKind
-  status    AlertStatus @default(OPEN)
-  detail    String
-  createdAt DateTime    @default(now())
-  karigar   Karigar     @relation(fields: [karigarId], references: [id], onDelete: Cascade)
+  id           String      @id @default(uuid())
+  karigarId    String
+  jobId        String
+  kind         AlertKind
+  status       AlertStatus @default(OPEN)
+  dedupeKey    String      @unique
+  detail       String
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+  createdAt    DateTime    @default(now())
+  karigar      Karigar     @relation(fields: [karigarId], references: [id], onDelete: Cascade)
+  job          Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  reviewedBy   User?       @relation("AlertReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   @@index([karigarId, status])
+  @@index([jobId])
 }
 
 model AuditLog {

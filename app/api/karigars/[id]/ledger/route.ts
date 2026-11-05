@@ -1,5 +1,5 @@
 import { requireRole } from "../../../../../lib/require-role";
-import { errorResponse } from "../../../../../lib/api";
+import { errorResponse, serializeBigInts } from "../../../../../lib/api";
 import { pageSchema } from "../../../../../lib/ledger-validation";
 import { getKarigarLedger } from "../../../../../lib/ledger-service";
 import { prisma } from "../../../../../lib/prisma";
@@ -11,9 +11,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const { id } = await context.params;
     const query = Object.fromEntries(new URL(request.url).searchParams);
     const { page, pageSize } = pageSchema.parse(query);
-    return Response.json(await getKarigarLedger(prisma, id, page, pageSize));
+    return Response.json(serializeBigInts(await getKarigarLedger(prisma, id, page, pageSize)));
   } catch (error) {
     return errorResponse(error);
   }
 }
-

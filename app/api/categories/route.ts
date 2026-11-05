@@ -1,5 +1,5 @@
 import { requireRole } from "../../../lib/require-role";
-import { errorResponse } from "../../../lib/api";
+import { errorResponse, serializeBigInts } from "../../../lib/api";
 import { prisma } from "../../../lib/prisma";
 
 export async function GET() {
@@ -7,7 +7,7 @@ export async function GET() {
   if (access instanceof Response) return access;
   try {
     const categories = await prisma.itemCategory.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, wastageBp: true } });
-    return Response.json(categories);
+    return Response.json(serializeBigInts(categories));
   } catch (error) {
     return errorResponse(error);
   }

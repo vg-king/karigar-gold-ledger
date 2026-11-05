@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
 import { fineMg, formatMg, parseWeightToMg } from "../lib/gold";
+import { recomputeLossAlerts } from "../lib/alerts";
+import { getStockForCsv } from "../lib/stock-service";
 
 // Demo-only credentials. Do not use these passwords outside local development.
 const DEMO_CLERK_PASSWORD = "Clerk@Demo2026";
@@ -130,6 +132,7 @@ async function main() {
 
     await prisma.auditLog.deleteMany();
     await prisma.alert.deleteMany();
+    await prisma.stockMovement.deleteMany();
     await prisma.ledgerEntry.deleteMany();
     await prisma.job.deleteMany();
     await prisma.karigarCategoryRate.deleteMany();
@@ -290,6 +293,46 @@ async function main() {
 
     assertBalances(entries, karigarRows.map((karigar) => karigar.id));
     await prisma.ledgerEntry.createMany({ data: entries });
+    for (const job of jobs) {
+      const jobEntries = entries.filter((entry) => entry.jobId === job.id).sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+      const latestEntry = jobEntries[jobEntries.length - 1];
+      await prisma.job.update({
+        where: { id: job.id },
+        data: {
+          createdAt: jobEntries[0]?.createdAt ?? new Date(),
+          ...(job.status === "CLOSED" ? { closedAt: latestEntry?.createdAt ?? new Date() } : {}),
+        },
+      });
+    }
+
+    let runningNet = 0n;
+    let lowestNet = 0n;
+    for (const entry of [...entries].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())) {
+      runningNet += entry.type === "ISSUE" ? entry.fineMg : -entry.fineMg;
+      lowestNet = runningNet > lowestNet ? lowestNet : runningNet;
+    }
+    const openingMg = -lowestNet + parseWeightToMg("1000.000");
+    await prisma.stockMovement.create({
+      data: {
+        type: "OPENING",
+        movementDate: daysAgo(40, 7),
+        fineMg: openingMg,
+        note: "Seed opening vault stock",
+        idempotencyKey: "seed-opening-stock",
+        createdById: financeHead.id,
+      },
+    });
+    await prisma.stockMovement.createMany({
+      data: [
+        { type: "REFINER_SEND", movementDate: daysAgo(8, 10), fineMg: parseWeightToMg("100.000"), note: "Seed refiner send 1", idempotencyKey: "seed-refiner-send-1", createdById: financeHead.id },
+        { type: "REFINER_SEND", movementDate: daysAgo(5, 10), fineMg: parseWeightToMg("50.000"), note: "Seed refiner send 2", idempotencyKey: "seed-refiner-send-2", createdById: financeHead.id },
+        { type: "REFINER_RETURN", movementDate: daysAgo(2, 10), fineMg: parseWeightToMg("30.000"), note: "Seed refiner return", idempotencyKey: "seed-refiner-return-1", createdById: financeHead.id },
+      ],
+    });
+    const todayStock = await getStockForCsv(prisma);
+    const sevenDaysStock = await getStockForCsv(prisma, new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+    if (!todayStock.reconciled || !sevenDaysStock.reconciled) throw new Error("Seed stock statement did not reconcile.");
+    const alertResult = await recomputeLossAlerts(prisma);
 
     await prisma.auditLog.create({
       data: {
@@ -301,18 +344,28 @@ async function main() {
     });
 
     console.log(`Seeded ${karigarRows.length} karigars, ${categoryRows.length} categories, ${jobs.length} jobs, and ${entries.length} ledger entries.`);
+    console.log(`Created ${alertResult.created} loss review alerts.`);
+    console.log(`Stock today: vault ${todayStock.vaultMg} mg, with karigars ${todayStock.withKarigarsMg} mg, refiner ${todayStock.atRefinerMg} mg, written off ${todayStock.writtenOffMg} mg.`);
     for (const karigar of karigarRows) {
       const karigarEntries = entries.filter((entry) => entry.karigarId === karigar.id);
-      const balance = karigarEntries.reduce(
-        (sum, entry) => sum + (entry.type === "ISSUE" ? entry.fineMg : -entry.fineMg),
-        0n,
-      );
+      const openBalance = jobs
+        .filter((job) => job.karigarId === karigar.id && job.status === "OPEN")
+        .reduce((sum, job) => sum + entries.filter((entry) => entry.jobId === job.id).reduce(
+          (jobSum, entry) => jobSum + (entry.type === "ISSUE" ? entry.fineMg : -entry.fineMg),
+          0n,
+        ), 0n);
+      const closedLoss = jobs
+        .filter((job) => job.karigarId === karigar.id && job.status === "CLOSED")
+        .reduce((sum, job) => sum + entries.filter((entry) => entry.jobId === job.id).reduce(
+          (jobSum, entry) => jobSum + (entry.type === "ISSUE" ? entry.fineMg : -entry.fineMg),
+          0n,
+        ), 0n);
       const closedLossesForKarigar = [];
       for (const job of jobs.filter((item) => item.karigarId === karigar.id && item.status === "CLOSED")) {
         const jobEntries = karigarEntries.filter((entry) => entry.jobId === job.id);
         closedLossesForKarigar.push(lossPercent(jobEntries));
       }
-      console.log(`${karigar.name}: ${jobs.filter((item) => item.karigarId === karigar.id).length} jobs, ${formatMg(balance)} g final balance, closed loss ${closedLossesForKarigar.join(", ")}`);
+      console.log(`${karigar.name}: ${jobs.filter((item) => item.karigarId === karigar.id).length} jobs, ${formatMg(openBalance)} g balance, ${formatMg(closedLoss)} g closed-job loss, closed loss ${closedLossesForKarigar.join(", ")}`);
     }
   } finally {
     await prisma.$disconnect();

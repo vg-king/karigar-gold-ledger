@@ -74,7 +74,16 @@ export function allowedWastageMg(issuedFineMg: bigint, wastageBp: bigint): bigin
   if (wastageBp < 0n || wastageBp > BASIS_POINTS) {
     throw new RangeError("Wastage must be between 0 and 10000 basis points");
   }
+
   return roundHalfUp(issuedFineMg * wastageBp, BASIS_POINTS);
+}
+
+// Assumption: lossBp is a rounded, integer-only loss rate for a closed job.
+export function lossBp(issuedFineMg: bigint, receivedFineMg: bigint): bigint {
+  assertNonNegativeInteger(issuedFineMg, "Issued fine weight");
+  assertNonNegativeInteger(receivedFineMg, "Received fine weight");
+  if (issuedFineMg === 0n) return 0n;
+  return roundHalfUp((issuedFineMg - receivedFineMg) * BASIS_POINTS, issuedFineMg);
 }
 
 export function runningBalanceMg(entries: LedgerEntry[]): bigint {

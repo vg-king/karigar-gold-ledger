@@ -8,10 +8,18 @@ import {
   lossBeyondAllowanceMg,
 } from "./gold";
 import { ApiError, serializeEntry, serializeWeight } from "./api";
+import { recomputeLossAlerts } from "./alerts";
 
 type Db = PrismaClient;
 type Actor = { id: string };
 type EntryRecord = Awaited<ReturnType<Db["ledgerEntry"]["findUnique"]>>;
+
+export type BalanceJob = {
+  status: string;
+  createdAt?: Date;
+  closedAt?: Date | null;
+  ledgerEntries: Array<{ type: string; fineMg: bigint; createdAt?: Date }>;
+};
 
 function entryPayloadMatches(entry: NonNullable<EntryRecord>, payload: {
   type: string; jobId: string; grossMg: bigint; purityBp: number; netMg: bigint | null; huid?: string;
@@ -29,6 +37,20 @@ function entryBalance(entries: Array<{ type: string; fineMg: bigint }>): bigint 
     type: entry.type as "ISSUE" | "RECEIPT_PIECE" | "RECEIPT_SCRAP" | "RECEIPT_FILINGS",
     fineMg: entry.fineMg,
   })));
+}
+
+// Balance means only fine gold still held in jobs open at the requested as-of date.
+export function calculateKarigarBalanceMg(jobs: BalanceJob[], asOf?: Date): bigint {
+  const end = asOf ? new Date(asOf) : null;
+  if (end) end.setUTCHours(23, 59, 59, 999);
+  return jobs
+    .filter((job) => {
+      if (end) {
+        return (!job.createdAt || job.createdAt <= end) && (!job.closedAt || job.closedAt > end);
+      }
+      return job.status === "OPEN";
+    })
+    .reduce((total, job) => total + entryBalance(job.ledgerEntries.filter((entry) => !end || !entry.createdAt || entry.createdAt <= end)), 0n);
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
@@ -218,7 +240,8 @@ export async function closeJob(db: Db, actor: Actor, jobId: string) {
       actualLoss: serializeWeight(actualLoss),
       lossBeyondAllowance: serializeWeight(lossBeyondAllowanceMg(actualLoss, allowed)),
     };
-    await tx.job.update({ where: { id: jobId }, data: { status: "CLOSED" } });
+    await tx.job.update({ where: { id: jobId }, data: { status: "CLOSED", closedAt: new Date() } });
+    await recomputeLossAlerts(tx);
     await audit(tx, actor.id, "CLOSE", "JOB", jobId, "Closed job and calculated wastage.");
     return result;
   });
@@ -242,12 +265,21 @@ export async function getKarigarBalance(db: Db, id: string) {
       jobId: job.id,
       jobNo: job.jobNo,
       balance: serializeWeight(issued - received),
+      issuedFine: serializeWeight(issued),
+      receivedFine: serializeWeight(received),
       allowedWastage: serializeWeight(allowedWastageMg(issued, BigInt(agreedRate))),
       actualLoss: serializeWeight(issued - received),
     };
   });
-  const entries = karigar.jobs.flatMap((job) => job.ledgerEntries);
-  return { karigar: { id: karigar.id, name: karigar.name, code: karigar.code }, balance: serializeWeight(entryBalance(entries)), openJobs };
+  const closedJobLoss = karigar.jobs
+    .filter((job) => job.status === "CLOSED")
+    .reduce((sum, job) => sum + entryBalance(job.ledgerEntries), 0n);
+  return {
+    karigar: { id: karigar.id, name: karigar.name, code: karigar.code },
+    balance: serializeWeight(calculateKarigarBalanceMg(karigar.jobs)),
+    closedJobLoss: serializeWeight(closedJobLoss),
+    openJobs,
+  };
 }
 
 export async function getKarigarLedger(db: Db, id: string, page: number, pageSize: number) {
@@ -261,8 +293,17 @@ export async function getKarigarLedger(db: Db, id: string, page: number, pageSiz
 }
 
 export async function getBalances(db: Db) {
-  const karigars = await db.karigar.findMany({ orderBy: { name: "asc" }, include: { ledgerEntries: true, jobs: { select: { status: true } } } });
-  return karigars.map((karigar) => ({ id: karigar.id, name: karigar.name, code: karigar.code, balance: serializeWeight(entryBalance(karigar.ledgerEntries)), openJobs: karigar.jobs.filter((job) => job.status === "OPEN").length }));
+  const karigars = await db.karigar.findMany({
+    orderBy: { name: "asc" },
+    include: { jobs: { include: { ledgerEntries: true } } },
+  });
+  return karigars.map((karigar) => ({
+    id: karigar.id,
+    name: karigar.name,
+    code: karigar.code,
+    balance: serializeWeight(calculateKarigarBalanceMg(karigar.jobs)),
+    openJobs: karigar.jobs.filter((job) => job.status === "OPEN").length,
+  }));
 }
 
 export async function getOpenJobs(db: Db) {

@@ -41,6 +41,22 @@ export function serializeWeight(value: bigint) {
   return { mg: value.toString(), grams: formatMg(value) };
 }
 
+export function serializeBigInts<T>(value: T): T {
+  if (typeof value === "bigint") {
+    return serializeWeight(value) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => serializeBigInts(item)) as T;
+  }
+  if (value instanceof Date) {
+    return value.toISOString() as T;
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serializeBigInts(item)])) as T;
+  }
+  return value;
+}
+
 export function serializeEntry(entry: {
   id: string;
   type: string;

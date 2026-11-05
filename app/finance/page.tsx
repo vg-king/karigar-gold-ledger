@@ -1,6 +1,7 @@
 import { requireRole } from "../../lib/require-role";
 import { AppShell } from "../../components/app-shell";
-import { Card, PageHeader } from "../../components/ui";
+import { PageHeader } from "../../components/ui";
+import { FinanceReview } from "../../components/finance-review";
 
 export default async function FinancePage() {
   const session = await requireRole(["FINANCE_HEAD"]);
@@ -8,5 +9,5 @@ export default async function FinancePage() {
     return null;
   }
 
-  return <AppShell session={session}><div className="page-shell"><PageHeader eyebrow="Finance" title="Finance workspace" description="Review gold movement and operational information in one place." /><Card><p className="muted">Finance tools are available here for authorized review.</p></Card></div></AppShell>;
+  return <AppShell session={session}><div className="page-shell"><PageHeader eyebrow="Finance" title="Loss review items" description="Review recent loss rates against each karigar's own closed-job history." /><FinanceReview /></div></AppShell>;
 }

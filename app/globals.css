@@ -138,6 +138,26 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .state-box p { margin: 0; }
 .state-error h3 { color: var(--danger); }
 .loading-stack { display: grid; gap: .8rem; }
+.review-list { display: grid; gap: 1rem; }
+.stock-stack { display: grid; gap: 1rem; }
+.stock-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
+.stock-toolbar label, .movement-form label { display: grid; gap: .35rem; color: var(--text-muted); font-weight: 700; }
+.stock-toolbar .input { min-width: 12rem; }
+.stock-metrics { margin-bottom: 0; }
+.movement-form { display: grid; gap: 1rem; grid-template-columns: repeat(3, 1fr); align-items: end; }
+.stock-karigar-row { display: flex; justify-content: space-between; gap: 1rem; padding: .75rem 0; border-top: 1px solid var(--border); }
+.stock-karigar-row:first-child { border-top: 0; }
+.stock-total { margin-top: .25rem; border-top: 2px solid var(--border); }
+.success-message { color: var(--accent); font-weight: 700; }
+@media (max-width: 48rem) {
+  .stock-toolbar, .movement-form { display: grid; grid-template-columns: 1fr; }
+  .stock-toolbar .button { width: 100%; }
+}
+.review-card h2 { max-width: 42rem; font-size: 1rem; }
+.review-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .75rem; margin-bottom: 1rem; color: var(--text-muted); font-size: .85rem; }
+.review-metrics strong { display: block; margin-top: .15rem; color: var(--text); font-variant-numeric: tabular-nums; }
+.sparkline { display: flex; align-items: end; gap: .3rem; height: 4rem; margin: 1rem 0; padding: .35rem; border-bottom: 1px solid var(--border); }
+.sparkline span { flex: 1; min-width: .4rem; max-width: 2rem; background: var(--accent); border-radius: .2rem .2rem 0 0; }
 .skeleton-line { height: 3.5rem; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
