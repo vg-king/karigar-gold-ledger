@@ -25,6 +25,12 @@ enum LedgerEntryType {
   RECEIPT_FILINGS
 }
 
+enum AiResolution {
+  NONE
+  USED_AI
+  KEPT_TYPED
+}
+
 enum StockMovementType {
   OPENING
   REFINER_SEND
@@ -130,6 +136,9 @@ model LedgerEntry {
   purityBp       Int
   fineMg         BigInt           @db.BigInt
   netMg          BigInt?          @db.BigInt
+  aiReadingMg    BigInt?          @db.BigInt
+  aiReadingPurityBp Int?
+  aiResolution   AiResolution     @default(NONE)
   huid           String?
   idempotencyKey String           @unique
   createdById    String

@@ -14,6 +14,28 @@ type Db = PrismaClient;
 type Actor = { id: string };
 type EntryRecord = Awaited<ReturnType<Db["ledgerEntry"]["findUnique"]>>;
 
+type AiInput = {
+  aiReadingMg?: string;
+  aiReadingPurityBp?: number;
+  aiResolution?: "NONE" | "USED_AI" | "KEPT_TYPED";
+};
+
+function aiPayload(input: AiInput, grossMg: bigint, purityBp: bigint) {
+  const resolution = input.aiResolution ?? "NONE";
+  const readingMg = input.aiReadingMg === undefined ? null : BigInt(input.aiReadingMg);
+  const readingPurityBp = input.aiReadingPurityBp ?? null;
+  if (resolution === "NONE" && (readingMg !== null || readingPurityBp !== null)) {
+    throw new ApiError("VALIDATION_ERROR", "AI readings require an AI resolution.", 422, "aiResolution");
+  }
+  if (resolution === "USED_AI" && ((readingMg !== null && readingMg !== grossMg) || (readingPurityBp !== null && readingPurityBp !== Number(purityBp)))) {
+    throw new ApiError("VALIDATION_ERROR", "Used AI values must match the saved values.", 422, "aiResolution");
+  }
+  if (resolution !== "NONE" && readingMg === null && readingPurityBp === null) {
+    throw new ApiError("VALIDATION_ERROR", "AI resolution requires an AI reading.", 422, "aiResolution");
+  }
+  return { aiReadingMg: readingMg, aiReadingPurityBp: readingPurityBp, aiResolution: resolution };
+}
+
 export type BalanceJob = {
   status: string;
   createdAt?: Date;
@@ -22,14 +44,17 @@ export type BalanceJob = {
 };
 
 function entryPayloadMatches(entry: NonNullable<EntryRecord>, payload: {
-  type: string; jobId: string; grossMg: bigint; purityBp: number; netMg: bigint | null; huid?: string;
+  type: string; jobId: string; grossMg: bigint; purityBp: number; netMg: bigint | null; huid?: string; aiReadingMg?: bigint | null; aiReadingPurityBp?: number | null; aiResolution?: string;
 }) {
   return entry.type === payload.type
     && entry.jobId === payload.jobId
     && entry.grossMg === payload.grossMg
     && entry.purityBp === payload.purityBp
     && entry.netMg === payload.netMg
-    && entry.huid === (payload.huid ?? null);
+    && entry.huid === (payload.huid ?? null)
+    && (entry.aiReadingMg ?? null) === (payload.aiReadingMg ?? null)
+    && (entry.aiReadingPurityBp ?? null) === (payload.aiReadingPurityBp ?? null)
+    && (entry.aiResolution ?? "NONE") === (payload.aiResolution ?? "NONE");
 }
 
 function entryBalance(entries: Array<{ type: string; fineMg: bigint }>): bigint {
@@ -121,15 +146,17 @@ export async function updateKarigar(db: Db, actor: Actor, id: string, input: {
 
 export async function createIssue(db: Db, actor: Actor, input: {
   karigarId: string; categoryId: string; grossWeight: string; purity: string; huid?: string; idempotencyKey: string; jobNo?: string;
+  aiReadingMg?: string; aiReadingPurityBp?: number; aiResolution?: "NONE" | "USED_AI" | "KEPT_TYPED";
 }) {
   const grossMg = parseWeightToMg(input.grossWeight);
   const purityBp = parsePurityToBp(input.purity);
   const fine = fineMg(grossMg, purityBp);
+  const ai = aiPayload(input, grossMg, purityBp);
   try {
     return await db.$transaction(async (tx) => {
     const duplicate = await tx.ledgerEntry.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
     if (duplicate) {
-      if (!entryPayloadMatches(duplicate, { type: "ISSUE", jobId: duplicate.jobId, grossMg, purityBp: Number(purityBp), netMg: null, huid: input.huid })) {
+      if (!entryPayloadMatches(duplicate, { type: "ISSUE", jobId: duplicate.jobId, grossMg, purityBp: Number(purityBp), netMg: null, huid: input.huid, ...ai })) {
         throw new ApiError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for a different payload.", 409);
       }
       return { status: 200, entry: serializeEntry(duplicate) };
@@ -151,7 +178,7 @@ export async function createIssue(db: Db, actor: Actor, input: {
     const entry = await tx.ledgerEntry.create({
       data: {
         type: "ISSUE", jobId: job.id, karigarId: input.karigarId, grossMg, purityBp: Number(purityBp),
-        fineMg: fine, netMg: null, huid: input.huid ?? null, idempotencyKey: input.idempotencyKey, createdById: actor.id,
+        fineMg: fine, netMg: null, huid: input.huid ?? null, idempotencyKey: input.idempotencyKey, createdById: actor.id, ...ai,
       },
     });
     await audit(tx, actor.id, "CREATE", "LEDGER_ENTRY", entry.id, "Created issue ledger entry.");
@@ -166,6 +193,7 @@ export async function createIssue(db: Db, actor: Actor, input: {
         purityBp: Number(purityBp),
         netMg: null,
         huid: input.huid,
+        ...ai,
       });
     }
     throw error;
@@ -174,10 +202,12 @@ export async function createIssue(db: Db, actor: Actor, input: {
 
 export async function createReceipt(db: Db, actor: Actor, input: {
   jobId: string; type: "RECEIPT_PIECE" | "RECEIPT_SCRAP" | "RECEIPT_FILINGS"; grossWeight: string; purity: string; netWeight?: string; huid?: string; idempotencyKey: string;
+  aiReadingMg?: string; aiReadingPurityBp?: number; aiResolution?: "NONE" | "USED_AI" | "KEPT_TYPED";
 }) {
   const grossMg = parseWeightToMg(input.grossWeight);
   const purityBp = parsePurityToBp(input.purity);
   const fine = fineMg(grossMg, purityBp);
+  const ai = aiPayload(input, grossMg, purityBp);
   const netMg = input.netWeight ? parseWeightToMg(input.netWeight) : null;
   if (netMg !== null && netMg > grossMg) {
     throw new ApiError("INVALID_INPUT", "Net weight cannot exceed gross weight.", 422, "netWeight");
@@ -186,7 +216,7 @@ export async function createReceipt(db: Db, actor: Actor, input: {
     return await db.$transaction(async (tx) => {
     const duplicate = await tx.ledgerEntry.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
     if (duplicate) {
-      if (!entryPayloadMatches(duplicate, { type: input.type, jobId: input.jobId, grossMg, purityBp: Number(purityBp), netMg, huid: input.huid })) {
+      if (!entryPayloadMatches(duplicate, { type: input.type, jobId: input.jobId, grossMg, purityBp: Number(purityBp), netMg, huid: input.huid, ...ai })) {
         throw new ApiError("IDEMPOTENCY_CONFLICT", "The idempotency key was already used for a different payload.", 409);
       }
       return { status: 200, entry: serializeEntry(duplicate) };
@@ -201,7 +231,7 @@ export async function createReceipt(db: Db, actor: Actor, input: {
     const entry = await tx.ledgerEntry.create({
       data: {
         type: input.type, jobId: job.id, karigarId: job.karigarId, grossMg, purityBp: Number(purityBp),
-        fineMg: fine, netMg, huid: input.huid ?? null, idempotencyKey: input.idempotencyKey, createdById: actor.id,
+        fineMg: fine, netMg, huid: input.huid ?? null, idempotencyKey: input.idempotencyKey, createdById: actor.id, ...ai,
       },
     });
     await audit(tx, actor.id, "CREATE", "LEDGER_ENTRY", entry.id, "Created receipt ledger entry.");
@@ -216,6 +246,7 @@ export async function createReceipt(db: Db, actor: Actor, input: {
         purityBp: Number(purityBp),
         netMg,
         huid: input.huid,
+        ...ai,
       });
     }
     throw error;

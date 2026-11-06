@@ -6,6 +6,8 @@ import { formatGoldForDisplay } from "../lib/format-gold";
 import { parseWeightToMg } from "../lib/gold";
 import { Badge, Button, Card, EmptyState, ErrorState, Skeleton } from "./ui";
 import { Field } from "./field";
+import { ScaleReader, type AiEvidence } from "./scale-reader";
+import { scaleValuesDiffer } from "../lib/scale-reader";
 
 type Job = { id: string; jobNo: string; karigar: { name: string; code: string }; category: { name: string }; outstanding: { grams: string }; issuedFine: { grams: string }; receivedFine: { grams: string }; actualLoss: { grams: string }; allowedWastage: { grams: string }; lossBeyondAllowance: { grams: string } };
 type FormErrors = Record<string, string>;
@@ -27,7 +29,13 @@ export function ReceiptForm() {
   const [created, setCreated] = useState<{ id: string; fine: { grams: string } } | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
   const [closePending, setClosePending] = useState(false);
+  const [aiEvidence, setAiEvidence] = useState<AiEvidence>({ aiResolution: "NONE" });
+  const [aiReading, setAiReading] = useState<{ weight: { mg: string } | null; purity: { bp: number } | null } | null>(null);
   const selected = jobs?.find((job) => job.id === jobId);
+  function updateAiEvidence(evidence: AiEvidence) {
+    setAiEvidence(evidence);
+    setAiReading(evidence.aiReadingMg || evidence.aiReadingPurityBp !== undefined ? { weight: evidence.aiReadingMg ? { mg: evidence.aiReadingMg } : null, purity: evidence.aiReadingPurityBp === undefined ? null : { bp: evidence.aiReadingPurityBp } } : null);
+  }
 
   async function loadJobs() {
     setJobs(null);
@@ -57,11 +65,11 @@ export function ReceiptForm() {
     }
     setPending(true); setErrors({}); setMessage("");
     const submissionKey = getSubmissionKey(key); setKey(submissionKey);
-    const response = await fetch("/api/receipts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId, type, grossWeight, purity, netWeight: netWeight || undefined, huid: huid || undefined, idempotencyKey: submissionKey }) }).catch(() => null);
+    const response = await fetch("/api/receipts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId, type, grossWeight, purity, netWeight: netWeight || undefined, huid: huid || undefined, idempotencyKey: submissionKey, ...aiEvidence }) }).catch(() => null);
     if (!response) { setMessage("Network error. Retry to safely submit the same receipt."); setPending(false); return; }
     const result = await response.json();
     if (!response.ok) { const field = result.error?.field; setErrors(field ? { [field]: result.error.message } : {}); setMessage(field ? "" : result.error?.code === "NEGATIVE_BALANCE" ? "This receipt is larger than the outstanding balance." : result.error?.code === "JOB_CLOSED" ? "This job is closed and cannot accept receipts." : result.error?.message ?? "Could not create the receipt."); setPending(false);     requestAnimationFrame(() => (document.querySelector(`[name="${field ?? "grossWeight"}"]`) as HTMLElement | null)?.focus()); return; }
-    setCreated(result.entry); setKey(null); setPending(false); setGrossWeight(""); setNetWeight(""); setHuid(""); setType("RECEIPT_PIECE"); await loadJobs();
+    setCreated(result.entry); setKey(null); setPending(false); setGrossWeight(""); setNetWeight(""); setHuid(""); setType("RECEIPT_PIECE"); setAiEvidence({ aiResolution: "NONE" }); setAiReading(null); await loadJobs();
   }
 
   async function closeJob() {
@@ -95,10 +103,11 @@ export function ReceiptForm() {
       <Field label="Receipt type"><select name="type" className="input" value={type} onChange={(event) => setType(event.target.value)}><option value="RECEIPT_PIECE">Piece</option><option value="RECEIPT_SCRAP">Scrap</option><option value="RECEIPT_FILINGS">Filings</option></select></Field>
       <Field label="Gross weight (g)" error={errors.grossWeight}><input name="grossWeight" className="input" inputMode="decimal" value={grossWeight} onChange={(event) => setGrossWeight(event.target.value)} required /> </Field>
       <Field label="Purity (%)" error={errors.purity}><input name="purity" className="input" inputMode="decimal" value={purity} onChange={(event) => setPurity(event.target.value)} required /></Field>
+      <ScaleReader weight={grossWeight} purity={purity} onWeight={setGrossWeight} onPurity={setPurity} onEvidence={updateAiEvidence} />
       {type === "RECEIPT_PIECE" && <><Field label="Net weight (g)" error={errors.netWeight}><input name="netWeight" className="input" inputMode="decimal" value={netWeight} onChange={(event) => setNetWeight(event.target.value)} required /></Field><Field label="HUID" error={errors.huid}><input name="huid" className="input" value={huid} onChange={(event) => setHuid(event.target.value)} required /></Field></>}
       <div className="live-fine"><span className="live-fine-label">Fine weight</span><strong className="gold-number">{fine ? formatGoldForDisplay(fine) : "—"} <span>g</span></strong><small>Calculated live; the server recalculates before saving.</small></div>
       {selected && <div className="mobile-summary"><p className="eyebrow">Live summary</p><strong>{selected.jobNo} · {selected.karigar.name}</strong><span className="gold-number">{selected.outstanding.grams} g outstanding</span></div>}
-      {message && <p className="inline-error" role="alert">{message}</p>}<Button type="submit" disabled={pending}>{pending ? "Saving…" : "Create receipt"}</Button>
+      {message && <p className="inline-error" role="alert">{message}</p>}<Button type="submit" disabled={pending || (aiEvidence.aiResolution === "NONE" && Boolean(aiEvidence.aiReadingMg || aiEvidence.aiReadingPurityBp) && aiReading !== null && scaleValuesDiffer(aiReading, grossWeight, purity))}>{pending ? "Saving…" : "Create receipt"}</Button>
     </form></Card>
     {selected && <Card className="side-summary"><p className="eyebrow">Live summary</p><h2>{selected.jobNo} · {selected.karigar.name}</h2><p className="muted">{selected.category.name} · {selected.karigar.code}</p><div className="review-panel"><div><span>Issued fine</span><strong className="gold-number">{selected.issuedFine.grams} g</strong></div><div><span>Received so far</span><strong className="gold-number">{selected.receivedFine.grams} g</strong></div><div><span>Outstanding</span><strong className="gold-number">{selected.outstanding.grams} g</strong></div><div><span>Allowed wastage</span><strong className="gold-number">{selected.allowedWastage.grams} g</strong></div></div><Button variant="quiet" onClick={() => setCloseOpen(true)}>Review and close job</Button></Card>}
     {created && <Card className="success-panel"><p className="eyebrow">Receipt created</p><h2>{created.fine.grams} g fine recorded</h2><p className="muted">Entry reference {created.id} · New balance will appear after refresh.</p><Button variant="quiet" onClick={() => setCreated(null)}>Record another</Button></Card>}

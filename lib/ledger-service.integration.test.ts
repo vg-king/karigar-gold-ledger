@@ -88,6 +88,9 @@ describeDb("ledger service real database integration", () => {
       categoryId,
       grossWeight: "120.000",
       purity: "91.60",
+      aiReadingMg: "120000",
+      aiReadingPurityBp: 9160,
+      aiResolution: "USED_AI",
       idempotencyKey: `${suffix}-issue`,
       jobNo: `IT-JOB-${suffix}`,
     });
@@ -95,12 +98,17 @@ describeDb("ledger service real database integration", () => {
     entryIds.push(issue.entry.id);
     expect(issue.status).toBe(201);
     expect(issue.entry.fine.mg).toBe("109920");
+    const storedAi = await prisma.ledgerEntry.findUnique({ where: { id: issue.entry.id }, select: { aiReadingMg: true, aiReadingPurityBp: true, aiResolution: true } });
+    expect(storedAi).toEqual({ aiReadingMg: 120000n, aiReadingPurityBp: 9160, aiResolution: "USED_AI" });
 
     const duplicate = await createIssue(prisma, actor, {
       karigarId,
       categoryId,
       grossWeight: "120.000",
       purity: "91.60",
+      aiReadingMg: "120000",
+      aiReadingPurityBp: 9160,
+      aiResolution: "USED_AI",
       idempotencyKey: `${suffix}-issue`,
       jobNo: `IT-JOB-${suffix}`,
     });
@@ -194,7 +202,7 @@ describeDb("ledger service real database integration", () => {
       data: { name: `Stock Integration ${suffix}`, code: `SI-${suffix.slice(-8)}`, phone: "9000000097" },
     });
     stockKarigarId = karigar.id;
-    const job = await prisma.job.create({ data: { jobNo: `SI-JOB-${suffix}`, karigarId: karigar.id, categoryId, status: "CLOSED", closedAt: new Date("2026-11-05T00:00:00.000Z") } });
+    const job = await prisma.job.create({ data: { jobNo: `SI-JOB-${suffix}`, karigarId: karigar.id, categoryId, status: "CLOSED", closedAt: new Date("2026-11-05T00:00:00.000Z"), createdAt: new Date("2026-11-04T00:00:00.000Z") } });
     stockJobId = job.id;
     const issue = await prisma.ledgerEntry.create({
       data: { type: "ISSUE", jobId: job.id, karigarId: karigar.id, grossMg: 1000n, purityBp: 10000, fineMg: 1000n, netMg: null, huid: null, idempotencyKey: `${suffix}-stock-issue`, createdById: actor.id, createdAt: new Date("2026-11-05T01:00:00.000Z") },

@@ -17,3 +17,10 @@ and the latest loss is **at least 50 bp above the mean**.
 The canonical karigar balance is the sum of `(issued fine - received fine)` for
 jobs open at the requested as-of date. Closed-job leftovers are written-off
 loss and are never included in the balance.
+
+## Step 6 AI scale reading
+
+- The Gemini call uses the official `generateContent` REST endpoint with inline image data. `GEMINI_MODEL` is configurable; the default is the current budget multimodal model documented by Google, `gemini-3.5-flash-lite`.
+- If `GEMINI_API_KEY` is absent or `AI_MOCK=1`, the server returns a deterministic demo reading derived from the image name and byte size. This is explicitly marked as mock and is not a measurement.
+- The server keeps image bytes only for the request. It does not log the key, image bytes, or model response.
+- Photo rate limiting is an in-memory limit of 10 requests per user per minute. It is per process and must be replaced with shared storage for a multi-instance deployment.

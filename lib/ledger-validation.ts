@@ -29,6 +29,9 @@ export const issueSchema = z.object({
   huid: optionalText(80),
   idempotencyKey: key,
   jobNo: z.string().trim().min(1).max(40).optional(),
+  aiReadingMg: z.string().regex(/^\d+$/).optional(),
+  aiReadingPurityBp: z.number().int().min(0).max(10000).optional(),
+  aiResolution: z.enum(["NONE", "USED_AI", "KEPT_TYPED"]).default("NONE"),
 });
 
 export const receiptSchema = z.object({
@@ -39,6 +42,9 @@ export const receiptSchema = z.object({
   netWeight: weight.optional(),
   huid: optionalText(80),
   idempotencyKey: key,
+  aiReadingMg: z.string().regex(/^\d+$/).optional(),
+  aiReadingPurityBp: z.number().int().min(0).max(10000).optional(),
+  aiResolution: z.enum(["NONE", "USED_AI", "KEPT_TYPED"]).default("NONE"),
 }).superRefine((value, context) => {
   if (value.type === "RECEIPT_PIECE" && !value.huid) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["huid"], message: "HUID is required for piece receipts." });
@@ -51,6 +57,9 @@ export const receiptSchema = z.object({
     } catch {
       // The field-level weight validator reports malformed values.
     }
+  }
+  if (value.aiResolution !== "NONE" && !value.aiReadingMg && value.aiReadingPurityBp === undefined) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["aiResolution"], message: "AI resolution requires an AI reading." });
   }
 });
 

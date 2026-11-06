@@ -70,6 +70,9 @@ export function serializeEntry(entry: {
   karigarId: string;
   createdById: string;
   createdAt: Date;
+  aiReadingMg?: bigint | null;
+  aiReadingPurityBp?: number | null;
+  aiResolution?: string;
 }) {
   return {
     id: entry.id,
@@ -84,5 +87,8 @@ export function serializeEntry(entry: {
     karigarId: entry.karigarId,
     createdById: entry.createdById,
     createdAt: entry.createdAt.toISOString(),
+    aiReading: entry.aiReadingMg == null ? null : serializeWeight(entry.aiReadingMg),
+    aiReadingPurityBp: entry.aiReadingPurityBp ?? null,
+    aiResolution: entry.aiResolution ?? "NONE",
   };
 }

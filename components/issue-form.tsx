@@ -7,6 +7,8 @@ import { calculateFineWeight, getSubmissionKey } from "../lib/entry-form";
 import { formatGoldForDisplay } from "../lib/format-gold";
 import { Badge, Button, Card, EmptyState, ErrorState, Skeleton } from "./ui";
 import { Field } from "./field";
+import { ScaleReader, type AiEvidence } from "./scale-reader";
+import { scaleValuesDiffer } from "../lib/scale-reader";
 
 type Karigar = { id: string; name: string; code: string };
 type Category = { id: string; name: string };
@@ -28,6 +30,12 @@ export function IssueForm() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [message, setMessage] = useState("");
   const [created, setCreated] = useState<{ id: string; fine: { grams: string }; gross: { grams: string }; purityBp: number; jobId: string } | null>(null);
+  const [aiEvidence, setAiEvidence] = useState<AiEvidence>({ aiResolution: "NONE" });
+  const [aiReading, setAiReading] = useState<{ weight: { mg: string } | null; purity: { bp: number } | null } | null>(null);
+  function updateAiEvidence(evidence: AiEvidence) {
+    setAiEvidence(evidence);
+    setAiReading(evidence.aiReadingMg || evidence.aiReadingPurityBp !== undefined ? { weight: evidence.aiReadingMg ? { mg: evidence.aiReadingMg } : null, purity: evidence.aiReadingPurityBp === undefined ? null : { bp: evidence.aiReadingPurityBp } } : null);
+  }
 
   useEffect(() => {
     Promise.all([fetch("/api/karigars"), fetch("/api/categories")]).then(async ([karigarResponse, categoryResponse]) => {
@@ -72,7 +80,7 @@ export function IssueForm() {
     const response = await fetch("/api/issues", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ karigarId: selectedKarigar, categoryId, grossWeight, purity, huid: huid || undefined, idempotencyKey: key }),
+      body: JSON.stringify({ karigarId: selectedKarigar, categoryId, grossWeight, purity, huid: huid || undefined, idempotencyKey: key, ...aiEvidence }),
     }).catch(() => null);
     if (!response) {
       setMessage("Network error. Retry to safely submit the same entry.");
@@ -106,6 +114,8 @@ export function IssueForm() {
     setBalance(null);
     setMessage("");
     setErrors({});
+    setAiEvidence({ aiResolution: "NONE" });
+    setAiReading(null);
   }
   if (message && !karigars && !categories) return <ErrorState message={message} />;
   if (!karigars || !categories) return <Card><Skeleton /><Skeleton /></Card>;
@@ -117,11 +127,12 @@ export function IssueForm() {
         <Field label="Item category" error={errors.categoryId}><select name="categoryId" className="input" value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required><option value="">Choose category</option>{categories.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></Field>
         <Field label="Gross weight (g)" error={errors.grossWeight}><input name="grossWeight" className="input" inputMode="decimal" placeholder="120.000" value={grossWeight} onChange={(event) => setGrossWeight(event.target.value)} required /></Field>
         <Field label="Purity (%)" error={errors.purity}><input name="purity" className="input" inputMode="decimal" value={purity} onChange={(event) => setPurity(event.target.value)} required /></Field>
+        <ScaleReader weight={grossWeight} purity={purity} onWeight={setGrossWeight} onPurity={setPurity} onEvidence={updateAiEvidence} />
         <Field label={<>HUID <span className="muted">(optional)</span></>} error={errors.huid}><input name="huid" className="input" value={huid} onChange={(event) => setHuid(event.target.value)} /></Field>
         <div className="live-fine"><span className="live-fine-label">Fine weight</span><strong className="gold-number">{fine ? formatGoldForDisplay(fine) : "—"} <span>g</span></strong><small>Calculated live; the server recalculates before saving.</small></div>
         <div className="mobile-summary"><p className="eyebrow">Live summary</p><strong>{selectedName ?? "Choose a karigar"}</strong>{balance ? <><span className="gold-number">{balance.balance.grams} g</span><span className="muted">{pluralizeCount(balance.openJobs.length, "open job")}</span></> : balanceError ? <span className="unavailable">Balance unavailable · <button type="button" className="retry-link" onClick={() => void loadBalance(selectedKarigar)}>Retry</button></span> : <span className="muted">Loading balance…</span>}</div>
         {message && <p className="inline-error" role="alert">{message}</p>}
-        <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Create issue"}</Button>
+        <Button type="submit" disabled={pending || (aiEvidence.aiResolution === "NONE" && Boolean(aiEvidence.aiReadingMg || aiEvidence.aiReadingPurityBp) && aiReading !== null && scaleValuesDiffer(aiReading, grossWeight, purity))}>{pending ? "Saving…" : "Create issue"}</Button>
       </form>
     </Card>
     <Card className="side-summary"><p className="eyebrow">Live summary</p><h2>{selectedName ?? "Choose a karigar"}</h2><p className="metric-label">Current balance</p>{balance ? <><p className="hero-number gold-number">{balance.balance.grams}<span> g</span></p><p className="muted">{pluralizeCount(balance.openJobs.length, "open job")}</p></> : balanceError ? <p className="unavailable">Balance unavailable · <button type="button" className="retry-link" onClick={() => void loadBalance(selectedKarigar)}>Retry</button></p> : <p className="muted">Loading balance…</p>}</Card>
