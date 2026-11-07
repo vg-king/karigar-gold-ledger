@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { aiResolutionEvidence, canUseScaleReading, readScalePhoto, scaleValuesDiffer, type ScaleResponse } from "../lib/scale-reader";
 import { Badge, Button } from "./ui";
+import { useBodyScrollLock } from "./use-body-scroll-lock";
 
 export type AiEvidence = {
   aiReadingMg?: string;
@@ -22,15 +23,18 @@ export function ScaleReader({ weight, purity, onWeight, onPurity, onEvidence }: 
   const [reading, setReading] = useState<ScaleResponse | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [resolution, setResolution] = useState<"USED_AI" | "KEPT_TYPED" | null>(null);
   const mismatch = reading?.status === "ok" || reading?.status === "low_confidence"
     ? !resolution && scaleValuesDiffer(reading, weight, purity)
     : false;
 
   useEffect(() => () => { if (photoUrl) URL.revokeObjectURL(photoUrl); }, [photoUrl]);
+  useBodyScrollLock(previewOpen);
 
   async function choose(file: File) {
     if (photoUrl) URL.revokeObjectURL(photoUrl);
+    setPreviewOpen(false);
     setPhotoUrl(URL.createObjectURL(file));
     setPending(true);
     setResolution(null);
@@ -71,7 +75,7 @@ export function ScaleReader({ weight, purity, onWeight, onPurity, onEvidence }: 
   }
 
   const weightText = reading?.weight?.grams ?? "Weight not read";
-  const purityText = reading?.purity?.percent ? `${reading.purity.percent}%` : "Purity not read";
+  const purityText = reading?.purity?.percent ? `${reading.purity.percent}%` : "Not read";
 
   return <div className="scale-reader">
     <label className="button button-quiet scale-upload">Add photo of scale or meter
@@ -79,16 +83,25 @@ export function ScaleReader({ weight, purity, onWeight, onPurity, onEvidence }: 
     </label>
     {pending && <p className="muted" role="status">Reading photo…</p>}
     {photoUrl && <div className="scale-reading">
-      {/* Blob URLs are local request previews and cannot use Next's image optimizer. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={photoUrl} alt="Scale or karat-meter photo preview" className="scale-thumbnail" />
+      <button type="button" className="scale-thumbnail-button" onClick={() => setPreviewOpen(true)} aria-label="Enlarge scale or karat-meter photo">
+        {/* Blob URLs are local request previews and cannot use Next's image optimizer. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={photoUrl} alt="Scale or karat-meter photo preview" className="scale-thumbnail" />
+      </button>
       {reading && <div className="scale-result">
         {reading.mock && <small className="muted">Demo reading (no AI key configured)</small>}
         <div className="card-heading"><strong>AI reading</strong>{reading.confidence && <Badge tone={reading.confidence === "high" ? "accent" : reading.confidence === "medium" ? "neutral" : "danger"}>{reading.confidence}</Badge>}</div>
         <p className="hero-number gold-number">{reading.weight?.grams ?? "—"}{reading.weight && <span> g</span>}</p>
-        <p className="metric-label"><span>Purity</span> <span>{purityText}</span></p>
+        <p className="metric-label"><span className="scale-purity-label">Purity</span> <span className="scale-purity-value">{purityText}</span></p>
         <p className="muted">{reading.message}</p>
         {canUseScaleReading(reading) && <Button type="button" variant="quiet" onClick={useAi}>Use this reading</Button>}
+      </div>}
+      {previewOpen && photoUrl && <div className="image-preview-backdrop" role="dialog" aria-modal="true" aria-label="Enlarged scale or karat-meter photo" onClick={(event) => { if (event.target === event.currentTarget) setPreviewOpen(false); }}>
+        <div className="image-preview">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={photoUrl} alt="Enlarged scale or karat-meter photo preview" />
+          <button type="button" className="close-button image-preview-close" onClick={() => setPreviewOpen(false)} aria-label="Close enlarged photo">×</button>
+        </div>
       </div>}
     </div>}
     {mismatch && <div className="mismatch-panel" role="alert"><strong>Reading differs from typed value</strong><div><span>AI: {weightText} / {purityText}</span><span>Typed: {weight || "—"} g / {purity || "—"}%</span></div><div className="modal-actions"><Button type="button" variant="quiet" onClick={useAi}>Use AI value</Button><Button type="button" onClick={keepTyped}>Keep my value (I checked the scale)</Button></div></div>}

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { Badge, Button, Card, EmptyState, ErrorState, PageHeader, Skeleton } from "./ui";
+import { useBodyScrollLock } from "./use-body-scroll-lock";
 
 type Rate = { categoryId: string; wastageBp: number };
 type Karigar = { id: string; name: string; nameTa: string | null; code: string; phone: string; active: boolean; categoryRates: Rate[] };
@@ -13,6 +14,7 @@ export function KarigarMaster() {
   const [error, setError] = useState(false);
   const [editing, setEditing] = useState<Karigar | null>(null);
   const [message, setMessage] = useState("");
+  useBodyScrollLock(editing !== null);
   useEffect(() => { Promise.all([fetch("/api/karigars"), fetch("/api/categories")]).then(async ([a, b]) => { if (!a.ok || !b.ok) throw new Error(); setItems(await a.json()); setCategories(await b.json()); }).catch(() => setError(true)); }, []);
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!editing) return; setMessage("");

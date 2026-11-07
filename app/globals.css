@@ -104,14 +104,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .page-header h1 { margin: .25rem 0 .4rem; font-size: clamp(1.7rem, 4vw, 2.5rem); letter-spacing: -.03em; }
 .page-header p { margin: 0; }
 .eyebrow, .metric-label { margin: 0; color: var(--accent); font-size: .72rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.scale-purity-label { letter-spacing: normal; text-transform: none; }
+.scale-purity-value { color: var(--text); font-weight: 600; letter-spacing: normal; text-transform: none; }
 .card { padding: 1.25rem; margin-bottom: 1rem; }
 .card h2 { margin: .25rem 0 0; font-size: 1.05rem; }
 .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .text-link { color: var(--accent); font-weight: 700; text-decoration: none; }
 .scale-reader { display: grid; gap: .75rem; }
 .scale-reading { display: flex; gap: 1rem; align-items: flex-start; }
-.scale-thumbnail { width: 9rem; max-height: 9rem; object-fit: cover; border-radius: .5rem; border: 1px solid var(--border); }
+.scale-thumbnail-button { width: 9rem; height: 9rem; flex: 0 0 9rem; padding: 0; border: 0; border-radius: .5rem; background: transparent; cursor: zoom-in; overflow: hidden; }
+.scale-thumbnail { width: 100%; height: 100%; object-fit: cover; image-orientation: from-image; border-radius: .5rem; border: 1px solid var(--border); }
 .scale-result { flex: 1; }
+.image-preview-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 1rem; background: var(--overlay); }
+.image-preview { position: relative; max-width: min(90vw, 40rem); max-height: 90vh; }
+.image-preview img { display: block; max-width: 90vw; max-height: 90vh; object-fit: contain; image-orientation: from-image; border-radius: .5rem; }
+.image-preview-close { position: absolute; top: .25rem; right: .25rem; color: var(--surface); background: rgb(0 0 0 / 55%); border-radius: 50%; }
 .mismatch-panel { border: 1px solid var(--warning); background: color-mix(in srgb, var(--warning) 10%, transparent); padding: 1rem; display: grid; gap: .75rem; }
 .mismatch-panel > div { display: flex; gap: 1rem; flex-wrap: wrap; }
 .ai-marker { font-size: .75rem; color: var(--accent); font-weight: 700; }
