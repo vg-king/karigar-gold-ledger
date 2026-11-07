@@ -9,6 +9,9 @@ import { Field } from "./field";
 import { ScaleReader, type AiEvidence } from "./scale-reader";
 import { scaleValuesDiffer } from "../lib/scale-reader";
 import { useBodyScrollLock } from "./use-body-scroll-lock";
+import { sanitizeDecimalInput } from "../lib/decimal-input";
+import { fetchReadWithRetry } from "../lib/read-request";
+import { SlowLoadingMessage } from "./slow-loading-message";
 
 type Job = { id: string; jobNo: string; karigar: { name: string; code: string }; category: { name: string }; outstanding: { grams: string }; issuedFine: { grams: string }; receivedFine: { grams: string }; actualLoss: { grams: string }; allowedWastage: { grams: string }; lossBeyondAllowance: { grams: string } };
 type FormErrors = Record<string, string>;
@@ -40,12 +43,11 @@ export function ReceiptForm() {
   }
 
   async function loadJobs() {
-    setJobs(null);
     setJobsError(false);
-    try { const response = await fetch("/api/jobs"); if (!response.ok) throw new Error(); const result = await response.json(); setJobs(result); } catch { setJobsError(true); setMessage(""); }
+    try { const response = await fetchReadWithRetry("/api/jobs"); if (!response.ok) throw new Error(); const result = await response.json(); setJobs(result); } catch { setJobsError(true); setMessage(""); }
   }
   useEffect(() => {
-    void fetch("/api/jobs").then(async (response) => {
+    void fetchReadWithRetry("/api/jobs").then(async (response) => {
       if (!response.ok) throw new Error();
       const result = await response.json();
       setJobs(result);
@@ -83,18 +85,19 @@ export function ReceiptForm() {
     if (!response.ok) { setMessage(result.error?.message ?? "Could not close the job."); setClosePending(false); return; }
     setCloseSummary(result);
     setCloseOpen(false);
+    setJobs((current) => current?.filter((job) => job.id !== closedJobId) ?? []);
     setJobId("");
     setGrossWeight("");
     setNetWeight("");
     setHuid("");
     setErrors({});
     setMessage("");
-    await loadJobs();
+    void loadJobs();
     setClosePending(false);
   }
 
   const fine = calculateFineWeight(grossWeight, purity);
-  if (!jobs && !message) return <Card><Skeleton /><Skeleton /></Card>;
+  if (!jobs && !message) return <Card><Skeleton /><Skeleton /><SlowLoadingMessage /></Card>;
   if (jobs && !jobs.length) return <Card><EmptyState title="No open jobs" message="Create an issue before recording a receipt." /></Card>;
   if (!jobs) return jobsError
     ? <Card><div className="state-box"><h3>Balance unavailable</h3><p>Open jobs and their balances could not be loaded.</p><button type="button" className="retry-link" onClick={() => void loadJobs()}>Retry</button></div></Card>
@@ -103,10 +106,10 @@ export function ReceiptForm() {
     <Card><div className="card-heading"><div><p className="eyebrow">New receipt</p><h2>Record gold received</h2></div><Badge tone="accent">Open jobs only</Badge></div><form onSubmit={submit} noValidate className="entry-form">
       <Field label="Open job" error={errors.jobId}><select name="jobId" className="input" value={jobId} onChange={(event) => setJobId(event.target.value)} required><option value="">Choose open job</option>{jobs.map((job) => <option value={job.id} key={job.id}>{job.jobNo} · {job.karigar.name}</option>)}</select></Field>
       <Field label="Receipt type"><select name="type" className="input" value={type} onChange={(event) => setType(event.target.value)}><option value="RECEIPT_PIECE">Piece</option><option value="RECEIPT_SCRAP">Scrap</option><option value="RECEIPT_FILINGS">Filings</option></select></Field>
-      <Field label="Gross weight (g)" error={errors.grossWeight}><input name="grossWeight" className="input" inputMode="decimal" value={grossWeight} onChange={(event) => setGrossWeight(event.target.value)} required /> </Field>
-      <Field label="Purity (%)" error={errors.purity}><input name="purity" className="input" inputMode="decimal" value={purity} onChange={(event) => setPurity(event.target.value)} required /></Field>
+      <Field label="Gross weight (g)" error={errors.grossWeight}><input name="grossWeight" className="input" inputMode="decimal" value={grossWeight} onChange={(event) => setGrossWeight(sanitizeDecimalInput(event.target.value, 3))} required /> </Field>
+      <Field label="Purity (%)" error={errors.purity}><input name="purity" className="input" inputMode="decimal" value={purity} onChange={(event) => setPurity(sanitizeDecimalInput(event.target.value, 2))} required /></Field>
       <ScaleReader weight={grossWeight} purity={purity} onWeight={setGrossWeight} onPurity={setPurity} onEvidence={updateAiEvidence} />
-      {type === "RECEIPT_PIECE" && <><Field label="Net weight (g)" error={errors.netWeight}><input name="netWeight" className="input" inputMode="decimal" value={netWeight} onChange={(event) => setNetWeight(event.target.value)} required /></Field><Field label="HUID" error={errors.huid}><input name="huid" className="input" value={huid} onChange={(event) => setHuid(event.target.value)} required /></Field></>}
+      {type === "RECEIPT_PIECE" && <><Field label="Net weight (g)" error={errors.netWeight}><input name="netWeight" className="input" inputMode="decimal" value={netWeight} onChange={(event) => setNetWeight(sanitizeDecimalInput(event.target.value, 3))} required /></Field><Field label="HUID" error={errors.huid}><input name="huid" className="input" value={huid} onChange={(event) => setHuid(event.target.value)} required /></Field></>}
       <div className="live-fine"><span className="live-fine-label">Fine weight</span><strong className="gold-number">{fine ? formatGoldForDisplay(fine) : "—"} <span>g</span></strong><small>Calculated live; the server recalculates before saving.</small></div>
       {selected && <div className="mobile-summary"><p className="eyebrow">Live summary</p><strong>{selected.jobNo} · {selected.karigar.name}</strong><span className="gold-number">{selected.outstanding.grams} g outstanding</span></div>}
       {message && <p className="inline-error" role="alert">{message}</p>}<Button type="submit" disabled={pending || (aiEvidence.aiResolution === "NONE" && Boolean(aiEvidence.aiReadingMg || aiEvidence.aiReadingPurityBp) && aiReading !== null && scaleValuesDiffer(aiReading, grossWeight, purity))}>{pending ? "Saving…" : "Create receipt"}</Button>

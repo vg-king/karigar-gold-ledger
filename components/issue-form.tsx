@@ -9,6 +9,7 @@ import { Badge, Button, Card, EmptyState, ErrorState, Skeleton } from "./ui";
 import { Field } from "./field";
 import { ScaleReader, type AiEvidence } from "./scale-reader";
 import { scaleValuesDiffer } from "../lib/scale-reader";
+import { sanitizeDecimalInput } from "../lib/decimal-input";
 
 type Karigar = { id: string; name: string; code: string };
 type Category = { id: string; name: string };
@@ -96,8 +97,8 @@ export function IssueForm() {
       requestAnimationFrame(() => (document.querySelector(`[name="${field ?? "grossWeight"}"]`) as HTMLElement | null)?.focus());
       return;
     }
-    await loadBalance(selectedKarigar);
     setCreated(result.entry);
+    setBalance(result.balance ? { balance: result.balance, openJobs: Array.from({ length: result.openJobCount ?? 0 }) } : null);
     setSubmissionKey(null);
     setPending(false);
   }
@@ -125,8 +126,8 @@ export function IssueForm() {
       <form onSubmit={submit} noValidate className="entry-form">
         <Field label="Karigar" error={errors.karigarId}><select name="karigarId" className="input" value={selectedKarigar} onChange={(event) => setSelectedKarigar(event.target.value)} required><option value="">Choose karigar</option>{karigars.map((item) => <option value={item.id} key={item.id}>{item.name} · {item.code}</option>)}</select></Field>
         <Field label="Item category" error={errors.categoryId}><select name="categoryId" className="input" value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required><option value="">Choose category</option>{categories.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></Field>
-        <Field label="Gross weight (g)" error={errors.grossWeight}><input name="grossWeight" className="input" inputMode="decimal" placeholder="120.000" value={grossWeight} onChange={(event) => setGrossWeight(event.target.value)} required /></Field>
-        <Field label="Purity (%)" error={errors.purity}><input name="purity" className="input" inputMode="decimal" value={purity} onChange={(event) => setPurity(event.target.value)} required /></Field>
+        <Field label="Gross weight (g)" error={errors.grossWeight}><input name="grossWeight" className="input" inputMode="decimal" placeholder="120.000" value={grossWeight} onChange={(event) => setGrossWeight(sanitizeDecimalInput(event.target.value, 3))} required /></Field>
+        <Field label="Purity (%)" error={errors.purity}><input name="purity" className="input" inputMode="decimal" value={purity} onChange={(event) => setPurity(sanitizeDecimalInput(event.target.value, 2))} required /></Field>
         <ScaleReader weight={grossWeight} purity={purity} onWeight={setGrossWeight} onPurity={setPurity} onEvidence={updateAiEvidence} />
         <Field label={<>HUID <span className="muted">(optional)</span></>} error={errors.huid}><input name="huid" className="input" value={huid} onChange={(event) => setHuid(event.target.value)} /></Field>
         <div className="live-fine"><span className="live-fine-label">Fine weight</span><strong className="gold-number">{fine ? formatGoldForDisplay(fine) : "—"} <span>g</span></strong><small>Calculated live; the server recalculates before saving.</small></div>

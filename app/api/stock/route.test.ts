@@ -5,6 +5,7 @@ vi.mock("../../../auth", () => ({ auth }));
 vi.mock("../../../lib/stock-service", () => ({ getStockStatement, createStockMovement }));
 vi.mock("../../../lib/prisma", () => ({ prisma }));
 import { GET, POST } from "./route";
+import { ApiError } from "../../../lib/api";
 
 const session = (role: "ISSUE_CLERK" | "FINANCE_HEAD") => ({ user: { id: "u", name: "User", email: "u@example.com", role }, expires: "2099-01-01" });
 
@@ -31,5 +32,13 @@ describe("stock route access", () => {
     }));
     expect(response.status).toBe(201);
     expect(await response.json()).toMatchObject({ movement: { fineMg: { mg: "596940", grams: "596.940" } } });
+  });
+
+  it("returns the standard 422 error for a future statement date", async () => {
+    auth.mockResolvedValueOnce(session("FINANCE_HEAD"));
+    getStockStatement.mockRejectedValueOnce(new ApiError("INVALID_DATE", "Stock statement date cannot be in the future.", 422, "date"));
+    const response = await GET(new Request("http://localhost/api/stock?date=2999-01-01"));
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ error: { code: "INVALID_DATE", message: "Stock statement date cannot be in the future." } });
   });
 });

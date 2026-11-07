@@ -56,9 +56,14 @@ export function parsePurityToBp(value: string): bigint {
 
 export function formatMg(value: bigint): string {
   assertNonNegativeInteger(value, "Weight");
-  const whole = value / MG_PER_GRAM;
-  const fraction = (value % MG_PER_GRAM).toString().padStart(3, "0");
-  return `${whole}.${fraction}`;
+  return formatSignedMg(value);
+}
+
+export function formatSignedMg(value: bigint): string {
+  const absolute = value < 0n ? -value : value;
+  const whole = absolute / MG_PER_GRAM;
+  const fraction = (absolute % MG_PER_GRAM).toString().padStart(3, "0");
+  return `${value < 0n ? "-" : ""}${whole}.${fraction}`;
 }
 
 export function fineMg(grossMg: bigint, purityBp: bigint): bigint {

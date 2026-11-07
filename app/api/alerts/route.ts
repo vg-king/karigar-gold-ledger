@@ -5,8 +5,8 @@ import { getLossAlerts, reviewLossAlert } from "../../../lib/alerts";
 import { prisma } from "../../../lib/prisma";
 
 const reviewSchema = z.object({
-  alertId: z.string().uuid(),
-  reviewNote: z.string().trim().max(1000).optional(),
+  alertId: z.string().min(1, "Please select a review item.").uuid("Please select a valid review item."),
+  reviewNote: z.string().trim().max(1000, "Review note is too long.").optional(),
 });
 
 export async function GET() {

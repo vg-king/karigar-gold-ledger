@@ -1,17 +1,18 @@
 import type { Prisma, PrismaClient } from "../generated/prisma/client";
 import { ApiError } from "./api";
-import { parseWeightToMg, formatMg } from "./gold";
-import { calculateStockStatement, parseStockDate, serializeStockStatement, type StockStatement } from "./stock";
+import { parseWeightToMg, formatMg, formatSignedMg } from "./gold";
+import { calculateStockStatement, isFutureStockDate, parseStockDate, serializeStockStatement, type StockStatement } from "./stock";
 
 type StockDb = PrismaClient | Prisma.TransactionClient;
 
 export async function getStockStatement(db: StockDb, dateValue?: string | null) {
   const date = parseStockDate(dateValue);
+  if (dateValue && isFutureStockDate(dateValue)) throw new ApiError("INVALID_DATE", "Stock statement date cannot be in the future.", 422, "date");
   const [movements, entries, jobs] = await Promise.all([
-    db.stockMovement.findMany({ orderBy: { movementDate: "asc" } }),
+    db.stockMovement.findMany({ orderBy: { movementDate: "asc" }, select: { type: true, movementDate: true, fineMg: true, note: true } }),
     db.ledgerEntry.findMany({ select: { type: true, fineMg: true, createdAt: true, jobId: true, karigarId: true } }),
     db.job.findMany({
-      include: { karigar: { select: { name: true } }, ledgerEntries: { select: { type: true, fineMg: true, createdAt: true, jobId: true, karigarId: true } } },
+      select: { id: true, jobNo: true, karigarId: true, createdAt: true, closedAt: true, karigar: { select: { name: true } }, ledgerEntries: { select: { type: true, fineMg: true, createdAt: true, jobId: true, karigarId: true } } },
     }),
   ]);
   const statement = calculateStockStatement(
@@ -71,7 +72,7 @@ export async function createStockMovement(db: PrismaClient, actorId: string, inp
 }
 
 function csvCell(value: string): string {
-  const guarded = /^[=+\-@]/.test(value) ? `'${value}` : value;
+  const guarded = /^[=+@]/.test(value) || /^-\D/.test(value) ? `'${value}` : value;
   return /[",\r\n]/.test(guarded)
     ? `"${guarded.replaceAll("\"", "\"\"")}"`
     : guarded;
@@ -86,7 +87,7 @@ export function buildStockCsv(statement: StockStatement): string {
   const date = dateForCsv(statement.date);
   const rows = [
     ["Date", "Voucher Type", "Ledger/Particulars", "Location", "Fine Weight (g)", "Narration"],
-    [date, "STOCK", "Vault", "VAULT", formatMg(statement.vaultMg < 0n ? 0n : statement.vaultMg), "Daily fine gold stock statement"],
+    [date, "STOCK", "Vault", "VAULT", formatSignedMg(statement.vaultMg), "Daily fine gold stock statement"],
     [date, "STOCK", "With karigars", "WITH KARIGARS", formatMg(statement.withKarigarsMg), "Open job balances"],
     [date, "STOCK", "At refiner", "AT REFINER", formatMg(statement.atRefinerMg), "Refiner balance"],
     [date, "STOCK", "Written-off wastage", "WRITTEN-OFF WASTAGE", formatMg(statement.writtenOffMg), "Closed job loss"],
@@ -97,10 +98,11 @@ export function buildStockCsv(statement: StockStatement): string {
 
 export async function getStockForCsv(db: StockDb, dateValue?: string | null) {
   const date = parseStockDate(dateValue);
+  if (dateValue && isFutureStockDate(dateValue)) throw new ApiError("INVALID_DATE", "Stock statement date cannot be in the future.", 422, "date");
   const [movements, entries, jobs] = await Promise.all([
-    db.stockMovement.findMany({ orderBy: { movementDate: "asc" } }),
+    db.stockMovement.findMany({ orderBy: { movementDate: "asc" }, select: { type: true, movementDate: true, fineMg: true, note: true } }),
     db.ledgerEntry.findMany({ select: { type: true, fineMg: true, createdAt: true, jobId: true, karigarId: true } }),
-    db.job.findMany({ include: { karigar: { select: { name: true } }, ledgerEntries: true } }),
+    db.job.findMany({ select: { id: true, jobNo: true, karigarId: true, createdAt: true, closedAt: true, karigar: { select: { name: true } }, ledgerEntries: { select: { type: true, fineMg: true, createdAt: true, jobId: true, karigarId: true } } } }),
   ]);
   return calculateStockStatement(
     movements.map((movement) => ({ type: movement.type, movementDate: movement.movementDate, fineMg: movement.fineMg, note: movement.note })),

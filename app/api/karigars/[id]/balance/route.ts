@@ -8,7 +8,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   if (access instanceof Response) return access;
   try {
     const { id } = await context.params;
-    return Response.json(serializeBigInts(await getKarigarBalance(prisma, id)));
+    const started = performance.now();
+    const result = Response.json(serializeBigInts(await getKarigarBalance(prisma, id)));
+    if (process.env.NODE_ENV === "development") console.info(`[timing] GET /api/karigars/${id}/balance ${(performance.now() - started).toFixed(0)}ms`);
+    return result;
   } catch (error) {
     return errorResponse(error);
   }

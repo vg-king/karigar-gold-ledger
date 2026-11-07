@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildStockCsv } from "./stock-service";
-import { calculateStockStatement } from "./stock";
+import { calculateStockStatement, serializeStockStatement } from "./stock";
 import { calculateKarigarBalanceMg } from "./ledger-service";
 
 const date = new Date("2026-11-05T00:00:00.000Z");
@@ -69,6 +69,16 @@ describe("daily stock statement", () => {
       date,
     );
     expect(negative.warning).toContain("negative");
+    expect(serializeStockStatement(negative).vault.grams).toBe("-0.001");
+  });
+
+  it("preserves signed vault values in CSV output", () => {
+    const csv = buildStockCsv({
+      date: "2026-11-05", openingMg: 1n, vaultMg: -12500n, withKarigarsMg: 0n, atRefinerMg: 0n,
+      writtenOffMg: 0n, reconciliationDifferenceMg: 0n, reconciled: false, warning: "negative",
+      karigars: [],
+    });
+    expect(csv).toContain(",-12.500,");
   });
 
   it("builds a BOM CSV with fixed decimals and injection protection", () => {

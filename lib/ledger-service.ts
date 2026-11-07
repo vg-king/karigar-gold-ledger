@@ -13,6 +13,7 @@ import { recomputeLossAlerts } from "./alerts";
 type Db = PrismaClient;
 type Actor = { id: string };
 type EntryRecord = Awaited<ReturnType<Db["ledgerEntry"]["findUnique"]>>;
+type SerializedEntry = ReturnType<typeof serializeEntry>;
 
 type AiInput = {
   aiReadingMg?: string;
@@ -153,7 +154,7 @@ export async function createIssue(db: Db, actor: Actor, input: {
   const fine = fineMg(grossMg, purityBp);
   const ai = aiPayload(input, grossMg, purityBp);
   try {
-    return await db.$transaction(async (tx) => {
+    const result: { status: number; entry: SerializedEntry } = await db.$transaction(async (tx) => {
     const duplicate = await tx.ledgerEntry.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
     if (duplicate) {
       if (!entryPayloadMatches(duplicate, { type: "ISSUE", jobId: duplicate.jobId, grossMg, purityBp: Number(purityBp), netMg: null, huid: input.huid, ...ai })) {
@@ -184,9 +185,11 @@ export async function createIssue(db: Db, actor: Actor, input: {
     await audit(tx, actor.id, "CREATE", "LEDGER_ENTRY", entry.id, "Created issue ledger entry.");
     return { status: 201, entry: serializeEntry(entry) };
     });
+    const balance = await getKarigarBalance(db, input.karigarId);
+    return { ...result, balance: balance.balance, openJobCount: balance.openJobs.length };
   } catch (error) {
     if (isUniqueConstraintError(error)) {
-      return recoverIdempotentEntry(db, input.idempotencyKey, {
+      const result = await recoverIdempotentEntry(db, input.idempotencyKey, {
         type: "ISSUE",
         jobId: (await db.ledgerEntry.findUnique({ where: { idempotencyKey: input.idempotencyKey } }))?.jobId ?? "",
         grossMg,
@@ -195,6 +198,8 @@ export async function createIssue(db: Db, actor: Actor, input: {
         huid: input.huid,
         ...ai,
       });
+      const balance = await getKarigarBalance(db, input.karigarId);
+      return { ...result, balance: balance.balance, openJobCount: balance.openJobs.length };
     }
     throw error;
   }
@@ -281,9 +286,14 @@ export async function closeJob(db: Db, actor: Actor, jobId: string) {
 export async function getKarigarBalance(db: Db, id: string) {
   const karigar = await db.karigar.findUnique({
     where: { id },
-    include: {
-      categoryRates: true,
-      jobs: { include: { category: true, ledgerEntries: { orderBy: { createdAt: "asc" } } } },
+    select: {
+      id: true, name: true, code: true,
+      categoryRates: { select: { categoryId: true, wastageBp: true } },
+      jobs: { select: {
+        id: true, jobNo: true, status: true, categoryId: true,
+        category: { select: { name: true, wastageBp: true } },
+        ledgerEntries: { orderBy: { createdAt: "asc" }, select: { type: true, fineMg: true, createdAt: true } },
+      } },
     },
   });
   if (!karigar) throw new ApiError("NOT_FOUND", "Karigar not found.", 404);
@@ -325,8 +335,11 @@ export async function getKarigarLedger(db: Db, id: string, page: number, pageSiz
 
 export async function getBalances(db: Db) {
   const karigars = await db.karigar.findMany({
+    select: {
+      id: true, name: true, code: true,
+      jobs: { select: { status: true, createdAt: true, closedAt: true, ledgerEntries: { select: { type: true, fineMg: true, createdAt: true } } } },
+    },
     orderBy: { name: "asc" },
-    include: { jobs: { include: { ledgerEntries: true } } },
   });
   return karigars.map((karigar) => ({
     id: karigar.id,
@@ -341,7 +354,12 @@ export async function getOpenJobs(db: Db) {
   const jobs = await db.job.findMany({
     where: { status: "OPEN" },
     orderBy: { createdAt: "desc" },
-    include: { karigar: { include: { categoryRates: true } }, category: true, ledgerEntries: true },
+    select: {
+      id: true, jobNo: true, categoryId: true,
+      karigar: { select: { id: true, name: true, code: true, categoryRates: { select: { categoryId: true, wastageBp: true } } } },
+      category: { select: { id: true, name: true, wastageBp: true } },
+      ledgerEntries: { select: { type: true, fineMg: true } },
+    },
   });
   return jobs.map((job) => {
     const issued = job.ledgerEntries.filter((entry) => entry.type === "ISSUE").reduce((sum, entry) => sum + entry.fineMg, 0n);

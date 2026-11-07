@@ -1,4 +1,4 @@
-import { formatMg } from "./gold";
+import { formatMg, formatSignedMg } from "./gold";
 import { calculateKarigarBalanceMg } from "./ledger-service";
 
 export type StockMovementInput = {
@@ -108,7 +108,7 @@ export function serializeStockStatement(statement: StockStatement) {
   return {
     date: statement.date,
     opening: { mg: statement.openingMg.toString(), grams: formatMg(statement.openingMg) },
-    vault: { mg: statement.vaultMg.toString(), grams: formatMg(statement.vaultMg < 0n ? 0n : statement.vaultMg) },
+    vault: { mg: statement.vaultMg.toString(), grams: formatSignedMg(statement.vaultMg) },
     withKarigars: { mg: statement.withKarigarsMg.toString(), grams: formatMg(statement.withKarigarsMg) },
     atRefiner: { mg: statement.atRefinerMg.toString(), grams: formatMg(statement.atRefinerMg) },
     writtenOff: { mg: statement.writtenOffMg.toString(), grams: formatMg(statement.writtenOffMg) },
@@ -125,4 +125,12 @@ export function parseStockDate(value: string | null | undefined): Date {
   const parsed = new Date(`${date}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime())) throw new Error("Date must use YYYY-MM-DD.");
   return parsed;
+}
+
+export function todayInIndia(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+}
+
+export function isFutureStockDate(value: string): boolean {
+  return value > todayInIndia();
 }

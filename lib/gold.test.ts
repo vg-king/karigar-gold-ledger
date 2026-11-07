@@ -3,6 +3,7 @@ import {
   allowedWastageMg,
   fineMg,
   formatMg,
+  formatSignedMg,
   lossBeyondAllowanceMg,
   lossBp,
   parsePurityToBp,
@@ -70,6 +71,8 @@ describe("gold maths", () => {
       expect(() => parsePurityToBp(value)).toThrow();
     }
     expect(() => formatMg(-1n)).toThrow();
+    expect(formatSignedMg(-12500n)).toBe("-12.500");
+    expect(formatSignedMg(0n)).toBe("0.000");
     expect(() => fineMg(-1n, 9160n)).toThrow();
     expect(() => fineMg(1n, 10001n)).toThrow();
     expect(() => allowedWastageMg(1n, 10001n)).toThrow();
